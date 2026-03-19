@@ -1,0 +1,9 @@
+{
+  "level": "DEBUG",
+  "logDir": "./tmp",
+  "console": true,
+  "file": true,
+  "contexts": {
+    "InterviewAPI": "DEBUG"
+  }
+}

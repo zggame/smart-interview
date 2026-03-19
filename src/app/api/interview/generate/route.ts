@@ -3,13 +3,16 @@ import { GoogleGenAI, createUserContent, createPartFromUri } from '@google/genai
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { createLogger } from '@/lib/logger';
 
 // Initialize the Google Gen AI client
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const log = createLogger('InterviewAPI');
 
 export async function POST(req: Request) {
   try {
     const contentType = req.headers.get('content-type') || '';
+    log.info('Incoming request', { contentType });
     
     let jobDescription: string;
     let skills: string;
@@ -32,6 +35,7 @@ export async function POST(req: Request) {
         videoBlob = videoFile;
       }
     } else {
+      log.debug('Parsing request as JSON (no video)');
       const body = await req.json();
       jobDescription = body.jobDescription;
       skills = body.skills;
@@ -40,8 +44,11 @@ export async function POST(req: Request) {
       questionNumber = body.questionNumber;
     }
 
+    log.info('Request parsed', { phase, questionNumber, historyLength: history.length, hasVideo: !!videoBlob });
+
     // Limit the number of questions
     if (phase === 'technical' && questionNumber > 5) {
+      log.info('Interview finished — technical phase complete');
       return NextResponse.json({ finished: true });
     }
 
@@ -76,12 +83,30 @@ export async function POST(req: Request) {
 
       try {
         // 2. Upload the video to Gemini File API
-        console.log('[Interview API] Uploading video to Gemini File API...');
+        log.info('Uploading video to Gemini File API...');
         const uploadedFile = await ai.files.upload({
           file: tempPath,
           config: { mimeType: 'video/webm' },
         });
-        console.log('[Interview API] Video uploaded successfully:', uploadedFile.uri);
+        log.info('Video uploaded to Gemini. Waiting for processing to complete...', { uri: uploadedFile.uri });
+
+        // Wait for the file to become ACTIVE (processing finished)
+        let file = await ai.files.get({ name: uploadedFile.name! });
+        let attempts = 0;
+        const maxAttempts = 30; // 60 seconds max wait
+        
+        while (file.state === 'PROCESSING' && attempts < maxAttempts) {
+          log.debug(`Video processing state: PROCESSING (Attempt ${attempts + 1}/${maxAttempts})`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          file = await ai.files.get({ name: uploadedFile.name! });
+          attempts++;
+        }
+
+        if (file.state !== 'ACTIVE') {
+          throw new Error(`Video processing timed out or failed. State: ${file.state}`);
+        }
+        
+        log.info('Video is now ACTIVE and ready for analysis');
 
         // 3. Build the multimodal prompt
         const textPrompt = `
@@ -163,13 +188,15 @@ export async function POST(req: Request) {
       nextQuestion = response.text?.trim() || 'Could you elaborate more on your previous experience?';
     }
 
+    log.info('Generated question', { questionNumber, phase, question: nextQuestion });
+
     return NextResponse.json({
       nextQuestion,
       finished: false,
     });
 
   } catch (error) {
-    console.error('API Error:', error);
+    log.error('Failed to generate question', error instanceof Error ? { message: error.message, stack: error.stack } : error);
     return NextResponse.json(
       { error: 'Failed to generate question.' },
       { status: 500 }
