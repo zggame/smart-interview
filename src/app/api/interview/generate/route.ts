@@ -88,7 +88,25 @@ export async function POST(req: Request) {
           file: tempPath,
           config: { mimeType: 'video/webm' },
         });
-        log.info('Video uploaded successfully', { uri: uploadedFile.uri });
+        log.info('Video uploaded to Gemini. Waiting for processing to complete...', { uri: uploadedFile.uri });
+
+        // Wait for the file to become ACTIVE (processing finished)
+        let file = await ai.files.get({ name: uploadedFile.name! });
+        let attempts = 0;
+        const maxAttempts = 30; // 60 seconds max wait
+        
+        while (file.state === 'PROCESSING' && attempts < maxAttempts) {
+          log.debug(`Video processing state: PROCESSING (Attempt ${attempts + 1}/${maxAttempts})`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          file = await ai.files.get({ name: uploadedFile.name! });
+          attempts++;
+        }
+
+        if (file.state !== 'ACTIVE') {
+          throw new Error(`Video processing timed out or failed. State: ${file.state}`);
+        }
+        
+        log.info('Video is now ACTIVE and ready for analysis');
 
         // 3. Build the multimodal prompt
         const textPrompt = `
