@@ -1,4 +1,16 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This is a Next.js interview application that records candidate answers, stores recordings in a private Supabase Storage bucket, and uses Gemini to generate follow-up questions.
+
+## Environment
+
+Add these values to `.env.local` before running the app:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL="https://<project-ref>.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="<service-role-key>"
+GEMINI_API_KEY="<google-ai-studio-key>"
+```
+
+The `SUPABASE_SERVICE_ROLE_KEY` is only used on the server so interview recordings can be uploaded to a private `interviews` bucket.
 
 ## Getting Started
 
