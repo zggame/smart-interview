@@ -1,7 +1,15 @@
-import { appendFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { join, resolve } from 'path';
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+interface LoggerConfig {
+  level: LogLevel;
+  logDir: string;
+  console: boolean;
+  file: boolean;
+  contexts: Record<string, LogLevel>;
+}
 
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   DEBUG: 0,
@@ -10,18 +18,47 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   ERROR: 3,
 };
 
-// Configurable via env: LOG_LEVEL (default: DEBUG), LOG_DIR (default: ./tmp)
-const CURRENT_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'DEBUG';
-const LOG_DIR = process.env.LOG_DIR || join(process.cwd(), 'tmp');
+// Load config from logger.config.json, falling back to env vars and defaults
+function loadConfig(): LoggerConfig {
+  const configPath = resolve(process.cwd(), 'logger.config.json');
+
+  const defaults: LoggerConfig = {
+    level: (process.env.LOG_LEVEL as LogLevel) || 'DEBUG',
+    logDir: process.env.LOG_DIR || join(process.cwd(), 'tmp'),
+    console: true,
+    file: true,
+    contexts: {},
+  };
+
+  try {
+    if (existsSync(configPath)) {
+      const raw = readFileSync(configPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return {
+        level: parsed.level || defaults.level,
+        logDir: parsed.logDir ? resolve(process.cwd(), parsed.logDir) : defaults.logDir,
+        console: parsed.console ?? defaults.console,
+        file: parsed.file ?? defaults.file,
+        contexts: parsed.contexts || defaults.contexts,
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load logger.config.json, using defaults:', err);
+  }
+
+  return defaults;
+}
+
+const config = loadConfig();
 
 // Ensure log directory exists
-if (!existsSync(LOG_DIR)) {
-  mkdirSync(LOG_DIR, { recursive: true });
+if (config.file && !existsSync(config.logDir)) {
+  mkdirSync(config.logDir, { recursive: true });
 }
 
 function getLogFilePath(): string {
   const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  return join(LOG_DIR, `app-${date}.log`);
+  return join(config.logDir, `app-${date}.log`);
 }
 
 function formatMessage(level: LogLevel, context: string, message: string, data?: unknown): string {
@@ -38,38 +75,50 @@ function formatMessage(level: LogLevel, context: string, message: string, data?:
   return line;
 }
 
-function shouldLog(level: LogLevel): boolean {
-  return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[CURRENT_LEVEL];
+function getEffectiveLevel(context: string): LogLevel {
+  return config.contexts[context] || config.level;
+}
+
+function shouldLog(level: LogLevel, context: string): boolean {
+  const effectiveLevel = getEffectiveLevel(context);
+  return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[effectiveLevel];
 }
 
 function writeLog(level: LogLevel, context: string, message: string, data?: unknown): void {
-  if (!shouldLog(level)) return;
+  if (!shouldLog(level, context)) return;
 
   const formatted = formatMessage(level, context, message, data);
 
   // Write to file
-  try {
-    appendFileSync(getLogFilePath(), formatted + '\n');
-  } catch (err) {
-    console.error('Failed to write log file:', err);
+  if (config.file) {
+    try {
+      appendFileSync(getLogFilePath(), formatted + '\n');
+    } catch (err) {
+      console.error('Failed to write log file:', err);
+    }
   }
 
-  // Also write to console with appropriate method
-  switch (level) {
-    case 'ERROR':
-      console.error(formatted);
-      break;
-    case 'WARN':
-      console.warn(formatted);
-      break;
-    default:
-      console.log(formatted);
-      break;
+  // Write to console
+  if (config.console) {
+    switch (level) {
+      case 'ERROR':
+        console.error(formatted);
+        break;
+      case 'WARN':
+        console.warn(formatted);
+        break;
+      default:
+        console.log(formatted);
+        break;
+    }
   }
 }
 
 /**
  * Create a scoped logger for a specific context (e.g., 'InterviewAPI', 'Auth').
+ * 
+ * The log level can be configured per-context in logger.config.json:
+ *   { "contexts": { "InterviewAPI": "DEBUG", "Auth": "WARN" } }
  * 
  * Usage:
  *   const log = createLogger('InterviewAPI');
