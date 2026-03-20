@@ -104,6 +104,25 @@ export function getNextInterviewStep(
   };
 }
 
+export function shouldFinishAfterGenerateResponse(input: {
+  resultFinished: boolean;
+  phase: InterviewPhase;
+  questionCount: number;
+  numIntroQuestions?: number;
+  numTechQuestions?: number;
+}) {
+  if (input.resultFinished) {
+    return true;
+  }
+
+  return getNextInterviewStep(
+    input.phase,
+    input.questionCount,
+    input.numIntroQuestions,
+    input.numTechQuestions
+  ).finished;
+}
+
 export function createUploadRecoveryState(input: {
   prepTimeLimit: number;
   recordTimeLimit: number;

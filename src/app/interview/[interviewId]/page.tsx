@@ -9,6 +9,7 @@ import {
   parseGenerateResponse,
   parseUploadTargetResponse,
   createUploadRecoveryState,
+  shouldFinishAfterGenerateResponse,
   type InterviewPhase,
 } from '../flow';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
@@ -137,14 +138,25 @@ export default function InterviewPage() {
         uploadTarget.storageKey
       );
 
-      if (result.finished) {
+      if (shouldFinishAfterGenerateResponse({
+        resultFinished: result.finished,
+        phase,
+        questionCount,
+        numIntroQuestions,
+        numTechQuestions,
+      })) {
         setStatus('finished');
         return;
       }
 
       const nextStep = getNextInterviewStep(phase, questionCount, numIntroQuestions, numTechQuestions);
-      setCurrentQuestion(result.nextQuestion);
-      setHistory([...answerHistory, { role: 'assistant', content: result.nextQuestion }]);
+      const nextQuestion = result.nextQuestion;
+      if (!nextQuestion) {
+        throw new Error('Missing next question after interview continuation.');
+      }
+
+      setCurrentQuestion(nextQuestion);
+      setHistory([...answerHistory, { role: 'assistant', content: nextQuestion }]);
       setQuestionCount(nextStep.nextCount);
       setPhase(nextStep.nextPhase);
       setPrepTimeLeft(maxPrepTime);

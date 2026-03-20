@@ -5,7 +5,6 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { createLogger } from '@/lib/logger';
 import { downloadInterviewRecording } from '@/lib/supabase-server';
-import { buildAnswerHistoryEntry } from '@/app/interview/flow';
 
 // Initialize the Google Gen AI client
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -84,7 +83,6 @@ export async function POST(req: Request) {
     } else if (storageKey) {
       // Subsequent questions WITH stored video — multimodal analysis
       const downloadedRecording = await downloadInterviewRecording(storageKey);
-      const historyWithRecording = [...history, buildAnswerHistoryEntry(storageKey)];
 
       // 1. Write the stored video blob to a temp file
       const extension = downloadedRecording.mimeType === 'video/mp4' ? 'mp4' : 'webm';
@@ -132,7 +130,7 @@ export async function POST(req: Request) {
           Current Phase: ${phase} Phase (Question ${questionNumber} of ${phase === 'intro' ? numIntroQuestions : numTechQuestions})
 
           Previous interview questions and answers in this session:
-          ${JSON.stringify(historyWithRecording)}
+          ${JSON.stringify(history)}
 
           IMPORTANT: The attached video is the candidate's answer to the previous question. Watch it carefully and analyze:
           1. What specific topics, technologies, or experiences did the candidate mention?

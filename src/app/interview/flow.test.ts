@@ -5,6 +5,7 @@ import {
   getNextInterviewStep,
   parseGenerateResponse,
   parseUploadTargetResponse,
+  shouldFinishAfterGenerateResponse,
 } from './flow';
 
 describe('parseGenerateResponse', () => {
@@ -63,6 +64,44 @@ describe('getNextInterviewStep', () => {
       nextCount: 6,
       nextPhase: 'technical',
     });
+  });
+});
+
+describe('shouldFinishAfterGenerateResponse', () => {
+  it('finishes when the API says the interview is finished', () => {
+    expect(
+      shouldFinishAfterGenerateResponse({
+        resultFinished: true,
+        phase: 'technical',
+        questionCount: 3,
+        numIntroQuestions: 2,
+        numTechQuestions: 5,
+      })
+    ).toBe(true);
+  });
+
+  it('finishes after the final technical answer even if the API returns another question', () => {
+    expect(
+      shouldFinishAfterGenerateResponse({
+        resultFinished: false,
+        phase: 'technical',
+        questionCount: 5,
+        numIntroQuestions: 2,
+        numTechQuestions: 5,
+      })
+    ).toBe(true);
+  });
+
+  it('continues during non-terminal steps', () => {
+    expect(
+      shouldFinishAfterGenerateResponse({
+        resultFinished: false,
+        phase: 'intro',
+        questionCount: 2,
+        numIntroQuestions: 2,
+        numTechQuestions: 5,
+      })
+    ).toBe(false);
   });
 });
 
