@@ -98,7 +98,7 @@ describe('POST /api/interview/generate', () => {
           skills: 'TypeScript',
           history: [
             { role: 'assistant', content: 'Tell me about your background.' },
-            { role: 'user', content: '[User answered via private video object: 2026-03-19/answer-0.webm]' },
+            { role: 'user', content: '[User answered via private video object: 2026-03-19/answer-1.webm]' },
           ],
           phase: 'intro',
           questionNumber: 2,
@@ -112,6 +112,7 @@ describe('POST /api/interview/generate', () => {
     expect(prompt).toContain('"role":"assistant"');
     expect(prompt).toContain('"role":"user"');
     expect(prompt).toContain('2026-03-19/answer-1.webm');
+    expect(prompt.match(/2026-03-19\/answer-1\.webm/g)).toHaveLength(1);
   });
 
   it('analyzes the final technical answer before finishing the interview', async () => {

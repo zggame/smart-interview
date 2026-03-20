@@ -1,16 +1,19 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { Camera, Mic, Loader2, Play, Circle, Square, CheckCircle2 } from 'lucide-react';
 import {
   buildAnswerHistoryEntry,
   getNextInterviewStep,
   parseGenerateResponse,
   parseUploadTargetResponse,
+  createUploadRecoveryState,
+  shouldFinishAfterGenerateResponse,
   type InterviewPhase,
-} from './flow';
+} from '../flow';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
+import { getInterviewSessionAction } from '@/app/actions';
 
 interface Message {
   role: 'assistant' | 'user';
@@ -19,11 +22,20 @@ interface Message {
 
 export default function InterviewPage() {
   const router = useRouter();
+  const params = useParams();
+  const interviewId = params.interviewId as string;
+
   const jobDescriptionRef = useRef('');
   const skillsRef = useRef('');
   
+  // Dynamic limits
+  const [numIntroQuestions, setNumIntroQuestions] = useState(2);
+  const [numTechQuestions, setNumTechQuestions] = useState(3);
+  const [maxPrepTime, setMaxPrepTime] = useState(30);
+  const [maxRecordTime, setMaxRecordTime] = useState(300);
+
   // State
-  const [status, setStatus] = useState<'setup' | 'prep' | 'recording' | 'processing' | 'finished'>('setup');
+  const [status, setStatus] = useState<'loading' | 'setup' | 'prep' | 'recording' | 'processing' | 'finished'>('loading');
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [questionCount, setQuestionCount] = useState(1);
   const [phase, setPhase] = useState<InterviewPhase>('intro');
@@ -31,7 +43,7 @@ export default function InterviewPage() {
   
   // Timers
   const [prepTimeLeft, setPrepTimeLeft] = useState(30);
-  const [recordTimeLeft, setRecordTimeLeft] = useState(300); // 5 mins max
+  const [recordTimeLeft, setRecordTimeLeft] = useState(300);
   
   // Media Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -40,7 +52,7 @@ export default function InterviewPage() {
   const startRecordingRef = useRef<() => void>(() => {});
   const stopRecordingRef = useRef<() => void>(() => {});
 
-  const stopMediaStream = () => {
+  const stopMediaStream = useCallback(() => {
     const stream = videoRef.current?.srcObject;
     if (!(stream instanceof MediaStream)) {
       return;
@@ -50,7 +62,7 @@ export default function InterviewPage() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  };
+  }, []);
 
   const initializeMedia = async () => {
     try {
@@ -82,9 +94,11 @@ export default function InterviewPage() {
         phase: currentPhase,
         questionNumber: count,
         storageKey,
+        numIntroQuestions,
+        numTechQuestions,
       }),
     });
-    
+
     return parseGenerateResponse(res);
   };
 
@@ -114,6 +128,7 @@ export default function InterviewPage() {
 
       const answerHistory = [...history, buildAnswerHistoryEntry(uploadTarget.storageKey)];
       setHistory(answerHistory);
+      
       const result = await fetchNextQuestion(
         jobDescriptionRef.current,
         skillsRef.current,
@@ -123,29 +138,44 @@ export default function InterviewPage() {
         uploadTarget.storageKey
       );
 
-      if (result.finished) {
+      if (shouldFinishAfterGenerateResponse({
+        resultFinished: result.finished,
+        phase,
+        questionCount,
+        numIntroQuestions,
+        numTechQuestions,
+      })) {
         setStatus('finished');
         return;
       }
 
-      const nextStep = getNextInterviewStep(phase, questionCount);
-      setCurrentQuestion(result.nextQuestion);
-      setHistory([...answerHistory, { role: 'assistant', content: result.nextQuestion }]);
+      const nextStep = getNextInterviewStep(phase, questionCount, numIntroQuestions, numTechQuestions);
+      const nextQuestion = result.nextQuestion;
+      if (!nextQuestion) {
+        throw new Error('Missing next question after interview continuation.');
+      }
+
+      setCurrentQuestion(nextQuestion);
+      setHistory([...answerHistory, { role: 'assistant', content: nextQuestion }]);
       setQuestionCount(nextStep.nextCount);
       setPhase(nextStep.nextPhase);
-      setPrepTimeLeft(30);
-      setRecordTimeLeft(300);
+      setPrepTimeLeft(maxPrepTime);
+      setRecordTimeLeft(maxRecordTime);
       setStatus('prep');
     } catch (err) {
       console.error("Upload error", err);
       alert("Failed to upload video. Please check connection.");
-      setPrepTimeLeft(30);
-      setRecordTimeLeft(300);
-      setStatus('prep');
+      const recovery = createUploadRecoveryState({
+        prepTimeLimit: maxPrepTime,
+        recordTimeLimit: maxRecordTime
+      });
+      setPrepTimeLeft(recovery.prepTimeLeft);
+      setRecordTimeLeft(recovery.recordTimeLeft);
+      setStatus(recovery.status);
     }
   };
 
-  const startRecording = () => {
+  const startRecording = useCallback(() => {
     if (!videoRef.current?.srcObject) return;
     
     const stream = videoRef.current.srcObject as MediaStream;
@@ -163,62 +193,79 @@ export default function InterviewPage() {
     
     mediaRecorder.start();
     setStatus('recording');
-  };
+  }, [history, phase, questionCount, numIntroQuestions, numTechQuestions, maxPrepTime, maxRecordTime]);
+
   startRecordingRef.current = startRecording;
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-  };
+  }, []);
   stopRecordingRef.current = stopRecording;
 
   useEffect(() => {
-    // Load JD from session
-    const jd = sessionStorage.getItem('smart-interview-jd');
-    const sk = sessionStorage.getItem('smart-interview-skills');
-    
-    if (!jd) {
-      router.push('/');
-      return;
-    }
-    
-    jobDescriptionRef.current = jd;
-    skillsRef.current = sk || '';
-    
-    // Start webcam and fetch first question
-    void initializeMedia();
-    const bootstrapTimer = setTimeout(() => {
-      void (async () => {
-        try {
-          const result = await fetchNextQuestion(jd, sk || '', [], 'intro', 1);
-          if (result.finished) {
-            setStatus('finished');
-            return;
-          }
-
-          setCurrentQuestion(result.nextQuestion);
-          setHistory([{ role: 'assistant', content: result.nextQuestion }]);
-          setPrepTimeLeft(30);
-          setRecordTimeLeft(300);
-          setStatus('prep');
-        } catch (error) {
-          console.error("Error fetching question", error);
-          alert("Error contacting AI server.");
-          setStatus('setup');
+    async function initInterview() {
+      try {
+        const session = await getInterviewSessionAction(interviewId);
+        if (!session || !session.job) {
+          router.push('/');
+          return;
         }
-      })();
-    }, 0);
-    
+
+        const job = session.job;
+        jobDescriptionRef.current = job.job_description;
+        skillsRef.current = job.skills || '';
+        
+        setNumIntroQuestions(job.num_intro_questions || 2);
+        setNumTechQuestions(job.num_tech_questions || 3);
+        setMaxPrepTime(job.prep_time_limit || 30);
+        setMaxRecordTime(job.record_time_limit || 300);
+        
+        setPrepTimeLeft(job.prep_time_limit || 30);
+        setRecordTimeLeft(job.record_time_limit || 300);
+
+        setStatus('setup');
+
+        // Start webcam
+        await initializeMedia();
+        
+        // Fetch first question
+        const result = await fetchNextQuestion(
+          job.job_description,
+          job.skills || '',
+          [],
+          'intro',
+          1
+        );
+
+        if (result.finished) {
+          setStatus('finished');
+          return;
+        }
+
+        setCurrentQuestion(result.nextQuestion);
+        setHistory([{ role: 'assistant', content: result.nextQuestion }]);
+        setPrepTimeLeft(job.prep_time_limit || 30);
+        setRecordTimeLeft(job.record_time_limit || 300);
+        setStatus('prep');
+
+      } catch (error) {
+        console.error('Failed to load interview session:', error);
+        router.push('/');
+      }
+    }
+
+    initInterview();
+
     return () => {
-      clearTimeout(bootstrapTimer);
       stopMediaStream();
     };
-  }, [router]);
+  }, [interviewId, router, stopMediaStream]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    
+
     if (status === 'prep' && prepTimeLeft > 0) {
       timer = setTimeout(() => setPrepTimeLeft(p => p - 1), 1000);
     } else if (status === 'prep' && prepTimeLeft === 0) {
@@ -232,7 +279,7 @@ export default function InterviewPage() {
         stopRecordingRef.current();
       }, 0);
     }
-    
+
     return () => clearTimeout(timer);
   }, [prepTimeLeft, recordTimeLeft, status]);
 
@@ -240,13 +287,21 @@ export default function InterviewPage() {
     if (status === 'finished') {
       stopMediaStream();
     }
-  }, [status]);
+  }, [status, stopMediaStream]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
 
   if (status === 'finished') {
     return (
@@ -275,7 +330,7 @@ export default function InterviewPage() {
       <div className="w-1/3 bg-gray-800 p-8 flex flex-col border-r border-gray-700">
         <div className="mb-8">
           <div className="inline-block px-3 py-1 rounded-full bg-blue-900/50 text-blue-300 text-sm font-medium mb-4 uppercase tracking-wider">
-            {phase} Phase • Question {questionCount}/5
+            {phase} Phase • Question {questionCount}/{phase === 'intro' ? numIntroQuestions : numTechQuestions}
           </div>
           <h2 className="text-2xl font-bold leading-relaxed text-gray-100">
             {status === 'setup' || status === 'processing' ? (
@@ -308,7 +363,7 @@ export default function InterviewPage() {
                 Recording in Progress
               </h3>
               <div className="text-4xl font-mono text-red-100">{formatTime(recordTimeLeft)}</div>
-              <p className="text-red-200/60 text-sm mt-2">Speak clearly. Max 5 minutes.</p>
+              <p className="text-red-200/60 text-sm mt-2">Speak clearly. Max {formatTime(maxRecordTime)}.</p>
             </div>
           )}
         </div>
