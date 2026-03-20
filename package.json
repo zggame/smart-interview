@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "find src -name '*.test.ts' -print0 | xargs -0 node --test --experimental-strip-types"
   },
   "dependencies": {
     "@google/genai": "^1.46.0",
