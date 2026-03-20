@@ -4,10 +4,21 @@ import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createLogger } from '@/lib/logger';
+import { uploadInterviewRecording } from '@/lib/supabase-server';
 
 // Initialize the Google Gen AI client
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const log = createLogger('InterviewAPI');
+
+function isMessageHistory(value: unknown): value is { role: string; content: string }[] {
+  return Array.isArray(value)
+    && value.every(
+      (item) => item
+        && typeof item === 'object'
+        && typeof item.role === 'string'
+        && typeof item.content === 'string'
+    );
+}
 
 export async function POST(req: Request) {
   try {
@@ -44,13 +55,17 @@ export async function POST(req: Request) {
       questionNumber = body.questionNumber;
     }
 
-    log.info('Request parsed', { phase, questionNumber, historyLength: history.length, hasVideo: !!videoBlob });
-
-    // Limit the number of questions
-    if (phase === 'technical' && questionNumber > 5) {
-      log.info('Interview finished — technical phase complete');
-      return NextResponse.json({ finished: true });
+    if (
+      typeof jobDescription !== 'string'
+      || typeof skills !== 'string'
+      || !isMessageHistory(history)
+      || (phase !== 'intro' && phase !== 'technical')
+      || !Number.isInteger(questionNumber)
+    ) {
+      return NextResponse.json({ error: 'Invalid request payload.' }, { status: 400 });
     }
+
+    log.info('Request parsed', { phase, questionNumber, historyLength: history.length, hasVideo: !!videoBlob });
 
     let nextQuestion: string;
 
@@ -76,6 +91,21 @@ export async function POST(req: Request) {
 
     } else if (videoBlob) {
       // Subsequent questions WITH video — multimodal analysis
+      const mimeType = videoBlob.type || 'video/webm';
+      const { storageKey } = await uploadInterviewRecording({
+        blob: videoBlob,
+        mimeType,
+      });
+      const historyWithRecording = [
+        ...history,
+        { role: 'user', content: `[User answered via private video object: ${storageKey}]` },
+      ];
+
+      if (phase === 'technical' && questionNumber > 5) {
+        log.info('Interview finished — technical phase complete');
+        return NextResponse.json({ finished: true });
+      }
+
       // 1. Write the video blob to a temp file
       const tempPath = join(tmpdir(), `interview_${Date.now()}.webm`);
       const arrayBuffer = await videoBlob.arrayBuffer();
@@ -121,7 +151,7 @@ export async function POST(req: Request) {
           Current Phase: ${phase} Phase (Question ${questionNumber} of 5)
 
           Previous interview questions and answers in this session:
-          ${JSON.stringify(history)}
+          ${JSON.stringify(historyWithRecording)}
 
           IMPORTANT: The attached video is the candidate's answer to the previous question. Watch it carefully and analyze:
           1. What specific topics, technologies, or experiences did the candidate mention?
