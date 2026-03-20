@@ -3,14 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Camera, Mic, Loader2, Play, Circle, Square, CheckCircle2 } from 'lucide-react';
-import {
-  buildAnswerHistoryEntry,
-  getNextInterviewStep,
-  parseGenerateResponse,
-  parseUploadTargetResponse,
-  type InterviewPhase,
-} from './flow';
-import { getSupabaseBrowser } from '@/lib/supabase-browser';
+import { supabase } from '@/lib/supabase';
+
+type InterviewPhase = 'intro' | 'technical';
 
 interface Message {
   role: 'assistant' | 'user';
@@ -19,8 +14,8 @@ interface Message {
 
 export default function InterviewPage() {
   const router = useRouter();
-  const jobDescriptionRef = useRef('');
-  const skillsRef = useRef('');
+  const [jobDescription, setJobDescription] = useState('');
+  const [skills, setSkills] = useState('');
   
   // State
   const [status, setStatus] = useState<'setup' | 'prep' | 'recording' | 'processing' | 'finished'>('setup');
@@ -37,20 +32,40 @@ export default function InterviewPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const startRecordingRef = useRef<() => void>(() => {});
-  const stopRecordingRef = useRef<() => void>(() => {});
 
-  const stopMediaStream = () => {
-    const stream = videoRef.current?.srcObject;
-    if (!(stream instanceof MediaStream)) {
+  useEffect(() => {
+    // Load JD from session
+    const jd = sessionStorage.getItem('smart-interview-jd');
+    const sk = sessionStorage.getItem('smart-interview-skills');
+
+    if (!jd) {
+      router.push('/');
       return;
     }
 
-    stream.getTracks().forEach((track) => track.stop());
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    setJobDescription(jd);
+    setSkills(sk || '');
+
+    // Start webcam and fetch first question
+    initializeMedia();
+    fetchNextQuestion(jd, sk || '', [], 'intro', 1);
+  }, [router]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+
+    if (status === 'prep' && prepTimeLeft > 0) {
+      timer = setTimeout(() => setPrepTimeLeft(p => p - 1), 1000);
+    } else if (status === 'prep' && prepTimeLeft === 0) {
+      startRecording();
+    } else if (status === 'recording' && recordTimeLeft > 0) {
+      timer = setTimeout(() => setRecordTimeLeft(p => p - 1), 1000);
+    } else if (status === 'recording' && recordTimeLeft === 0) {
+      stopRecording();
     }
-  };
+
+    return () => clearTimeout(timer);
+  }, [status, prepTimeLeft, recordTimeLeft]);
 
   const initializeMedia = async () => {
     try {
@@ -64,84 +79,58 @@ export default function InterviewPage() {
     }
   };
 
-  const fetchNextQuestion = async (
-    jd: string,
-    sk: string,
-    chatHistory: Message[],
-    currentPhase: InterviewPhase,
-    count: number,
-    storageKey?: string
-  ) => {
-    const res = await fetch('/api/interview/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jobDescription: jd,
-        skills: sk,
-        history: chatHistory,
-        phase: currentPhase,
-        questionNumber: count,
-        storageKey,
-      }),
-    });
-
-    return parseGenerateResponse(res);
-  };
-
-  const handleUploadAndNext = async () => {
+  const fetchNextQuestion = async (jd: string, sk: string, chatHistory: Message[], currentPhase: InterviewPhase, count: number, videoBlob?: Blob) => {
     setStatus('processing');
-    const blob = new Blob(chunksRef.current, { type: 'video/webm' });
     
     try {
-      const uploadTargetResponse = await fetch('/api/interview/upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mimeType: blob.type || 'video/webm',
-        }),
-      });
-      const uploadTarget = await parseUploadTargetResponse(uploadTargetResponse);
-      const uploadResult = await getSupabaseBrowser().storage
-        .from('interviews')
-        .uploadToSignedUrl(uploadTarget.path, uploadTarget.token, blob, {
-          cacheControl: '3600',
-          contentType: blob.type || 'video/webm',
-        });
+      let res: Response;
 
-      if (uploadResult.error) {
-        throw new Error(uploadResult.error.message);
+      if (videoBlob) {
+        // Send FormData with the video blob for multimodal analysis
+        const formData = new FormData();
+        formData.append('jobDescription', jd);
+        formData.append('skills', sk);
+        formData.append('history', JSON.stringify(chatHistory));
+        formData.append('phase', currentPhase);
+        formData.append('questionNumber', count.toString());
+        formData.append('video', videoBlob, `answer_${Date.now()}.webm`);
+
+        res = await fetch('/api/interview/generate', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // First question — no video yet, send JSON
+        res = await fetch('/api/interview/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobDescription: jd,
+            skills: sk,
+            history: chatHistory,
+            phase: currentPhase,
+            questionNumber: count
+          }),
+        });
       }
 
-      const answerHistory = [...history, buildAnswerHistoryEntry(uploadTarget.storageKey)];
-      setHistory(answerHistory);
-      const result = await fetchNextQuestion(
-        jobDescriptionRef.current,
-        skillsRef.current,
-        answerHistory,
-        phase,
-        questionCount,
-        uploadTarget.storageKey
-      );
+      const data = await res.json();
 
-      if (result.finished) {
+      if (data.finished) {
         setStatus('finished');
         return;
       }
 
-      const nextStep = getNextInterviewStep(phase, questionCount);
-      setCurrentQuestion(result.nextQuestion);
-      setHistory([...answerHistory, { role: 'assistant', content: result.nextQuestion }]);
-      setQuestionCount(nextStep.nextCount);
-      setPhase(nextStep.nextPhase);
+      setCurrentQuestion(data.nextQuestion);
+      setHistory(prev => [...prev, { role: 'assistant', content: data.nextQuestion }]);
       setPrepTimeLeft(30);
       setRecordTimeLeft(300);
       setStatus('prep');
+
     } catch (err) {
-      console.error("Upload error", err);
-      alert("Failed to upload video. Please check connection.");
-      setPrepTimeLeft(30);
-      setRecordTimeLeft(300);
-      setStatus('prep');
+      console.error("Error fetching question", err);
+      alert("Error contacting AI server.");
+      setStatus('setup');
     }
   };
 
@@ -164,83 +153,62 @@ export default function InterviewPage() {
     mediaRecorder.start();
     setStatus('recording');
   };
-  startRecordingRef.current = startRecording;
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
   };
-  stopRecordingRef.current = stopRecording;
 
-  useEffect(() => {
-    // Load JD from session
-    const jd = sessionStorage.getItem('smart-interview-jd');
-    const sk = sessionStorage.getItem('smart-interview-skills');
+  const handleUploadAndNext = async () => {
+    setStatus('processing');
+    const blob = new Blob(chunksRef.current, { type: 'video/webm' });
     
-    if (!jd) {
-      router.push('/');
-      return;
+    try {
+      // 1. Upload to Supabase Storage
+      const fileName = `interview_${Date.now()}.webm`;
+      const { data, error } = await supabase.storage
+        .from('interviews')
+        .upload(fileName, blob, {
+          contentType: 'video/webm'
+        });
+
+      if (error) throw error;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('interviews')
+        .getPublicUrl(fileName);
+
+      // Update history with the user's video answer URL
+      const newHistory: Message[] = [...history, { role: 'user', content: `[User answered via video: ${publicUrl}]` }];
+      setHistory(newHistory);
+
+      // Determine next phase/count
+      let nextCount = questionCount + 1;
+      let nextPhase = phase;
+
+      if (nextCount > 5 && phase === 'intro') {
+        nextPhase = 'technical';
+        nextCount = 1; // Reset count for technical phase
+      }
+
+      if (nextCount > 5 && phase === 'technical') {
+        setStatus('finished');
+        return;
+      }
+
+      setQuestionCount(nextCount);
+      setPhase(nextPhase);
+
+      // Fetch next question — pass the video blob for multimodal analysis
+      await fetchNextQuestion(jobDescription, skills, newHistory, nextPhase, nextCount, blob);
+
+    } catch (err) {
+      console.error("Upload error", err);
+      alert("Failed to upload video. Please check connection.");
     }
-
-    jobDescriptionRef.current = jd;
-    skillsRef.current = sk || '';
-
-    // Start webcam and fetch first question
-    void initializeMedia();
-    const bootstrapTimer = setTimeout(() => {
-      void (async () => {
-        try {
-          const result = await fetchNextQuestion(jd, sk || '', [], 'intro', 1);
-          if (result.finished) {
-            setStatus('finished');
-            return;
-          }
-
-          setCurrentQuestion(result.nextQuestion);
-          setHistory([{ role: 'assistant', content: result.nextQuestion }]);
-          setPrepTimeLeft(30);
-          setRecordTimeLeft(300);
-          setStatus('prep');
-        } catch (error) {
-          console.error("Error fetching question", error);
-          alert("Error contacting AI server.");
-          setStatus('setup');
-        }
-      })();
-    }, 0);
-
-    return () => {
-      clearTimeout(bootstrapTimer);
-      stopMediaStream();
-    };
-  }, [router]);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-
-    if (status === 'prep' && prepTimeLeft > 0) {
-      timer = setTimeout(() => setPrepTimeLeft(p => p - 1), 1000);
-    } else if (status === 'prep' && prepTimeLeft === 0) {
-      timer = setTimeout(() => {
-        startRecordingRef.current();
-      }, 0);
-    } else if (status === 'recording' && recordTimeLeft > 0) {
-      timer = setTimeout(() => setRecordTimeLeft(p => p - 1), 1000);
-    } else if (status === 'recording' && recordTimeLeft === 0) {
-      timer = setTimeout(() => {
-        stopRecordingRef.current();
-      }, 0);
-    }
-
-    return () => clearTimeout(timer);
-  }, [prepTimeLeft, recordTimeLeft, status]);
-
-  useEffect(() => {
-    if (status === 'finished') {
-      stopMediaStream();
-    }
-  }, [status]);
+  };
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -256,10 +224,7 @@ export default function InterviewPage() {
           <h1 className="text-3xl font-bold mb-4">Interview Complete!</h1>
           <p className="text-gray-600 mb-8">Thank you for your time. Your responses have been recorded and will be reviewed shortly.</p>
           <button 
-            onClick={() => {
-              stopMediaStream();
-              router.push('/');
-            }}
+            onClick={() => router.push('/')}
             className="bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-700 font-medium"
           >
             Return Home
