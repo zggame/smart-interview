@@ -19,6 +19,8 @@ export async function POST(req: Request) {
     let history: { role: string; content: string }[];
     let phase: string;
     let questionNumber: number;
+    let numIntroQuestions: number;
+    let numTechQuestions: number;
     let videoBlob: Blob | null = null;
 
     // Parse either FormData (with video) or JSON (first question, no video)
@@ -29,6 +31,8 @@ export async function POST(req: Request) {
       history = JSON.parse(formData.get('history') as string);
       phase = formData.get('phase') as string;
       questionNumber = parseInt(formData.get('questionNumber') as string, 10);
+      numIntroQuestions = parseInt(formData.get('numIntroQuestions') as string, 10) || 5;
+      numTechQuestions = parseInt(formData.get('numTechQuestions') as string, 10) || 5;
       
       const videoFile = formData.get('video');
       if (videoFile instanceof Blob) {
@@ -42,12 +46,14 @@ export async function POST(req: Request) {
       history = body.history;
       phase = body.phase;
       questionNumber = body.questionNumber;
+      numIntroQuestions = body.numIntroQuestions || 5;
+      numTechQuestions = body.numTechQuestions || 5;
     }
 
     log.info('Request parsed', { phase, questionNumber, historyLength: history.length, hasVideo: !!videoBlob });
 
     // Limit the number of questions
-    if (phase === 'technical' && questionNumber > 5) {
+    if (phase === 'technical' && questionNumber > numTechQuestions) {
       log.info('Interview finished — technical phase complete');
       return NextResponse.json({ finished: true });
     }
@@ -118,7 +124,7 @@ export async function POST(req: Request) {
           Target Skills for Technical Phase:
           ${skills || 'General technical proficiency related to the job description'}
 
-          Current Phase: ${phase} Phase (Question ${questionNumber} of 5)
+          Current Phase: ${phase} Phase (Question ${questionNumber} of ${phase === 'intro' ? numIntroQuestions : numTechQuestions})
 
           Previous interview questions and answers in this session:
           ${JSON.stringify(history)}
@@ -165,7 +171,7 @@ export async function POST(req: Request) {
         Target Skills for Technical Phase:
         ${skills || 'General technical proficiency related to the job description'}
 
-        Current Phase: ${phase} Phase (Question ${questionNumber} of 5)
+        Current Phase: ${phase} Phase (Question ${questionNumber} of ${phase === 'intro' ? numIntroQuestions : numTechQuestions})
         
         Interview History context:
         ${JSON.stringify(history)}

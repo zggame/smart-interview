@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { Camera, Mic, Loader2, Play, Circle, Square, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { getInterviewSessionAction } from '@/app/actions';
 
 type InterviewPhase = 'intro' | 'technical';
 
@@ -14,11 +15,20 @@ interface Message {
 
 export default function InterviewPage() {
   const router = useRouter();
+  const params = useParams();
+  const interviewId = params.interviewId as string;
+
   const [jobDescription, setJobDescription] = useState('');
   const [skills, setSkills] = useState('');
   
+  // Dynamic limits
+  const [numIntroQuestions, setNumIntroQuestions] = useState(2);
+  const [numTechQuestions, setNumTechQuestions] = useState(3);
+  const [maxPrepTime, setMaxPrepTime] = useState(30);
+  const [maxRecordTime, setMaxRecordTime] = useState(300);
+
   // State
-  const [status, setStatus] = useState<'setup' | 'prep' | 'recording' | 'processing' | 'finished'>('setup');
+  const [status, setStatus] = useState<'loading' | 'setup' | 'prep' | 'recording' | 'processing' | 'finished'>('loading');
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [questionCount, setQuestionCount] = useState(1);
   const [phase, setPhase] = useState<InterviewPhase>('intro');
@@ -34,22 +44,49 @@ export default function InterviewPage() {
   const chunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
-    // Load JD from session
-    const jd = sessionStorage.getItem('smart-interview-jd');
-    const sk = sessionStorage.getItem('smart-interview-skills');
-    
-    if (!jd) {
-      router.push('/');
-      return;
+    async function initInterview() {
+      try {
+        const session = await getInterviewSessionAction(interviewId);
+        if (!session || !session.job) {
+          router.push('/');
+          return;
+        }
+
+        const job = session.job;
+        setJobDescription(job.job_description);
+        setSkills(job.skills || '');
+        setNumIntroQuestions(job.num_intro_questions || 2);
+        setNumTechQuestions(job.num_tech_questions || 3);
+        setMaxPrepTime(job.prep_time_limit || 30);
+        setMaxRecordTime(job.record_time_limit || 300);
+
+        setPrepTimeLeft(job.prep_time_limit || 30);
+        setRecordTimeLeft(job.record_time_limit || 300);
+
+        setStatus('setup');
+
+        // Start webcam and fetch first question
+        await initializeMedia();
+        fetchNextQuestion(
+          job.job_description,
+          job.skills || '',
+          [],
+          'intro',
+          1,
+          undefined,
+          job.num_intro_questions || 2,
+          job.num_tech_questions || 3,
+          job.prep_time_limit || 30,
+          job.record_time_limit || 300
+        );
+      } catch (error) {
+        console.error('Failed to load interview session:', error);
+        router.push('/');
+      }
     }
-    
-    setJobDescription(jd);
-    setSkills(sk || '');
-    
-    // Start webcam and fetch first question
-    initializeMedia();
-    fetchNextQuestion(jd, sk || '', [], 'intro', 1);
-  }, [router]);
+
+    initInterview();
+  }, [interviewId, router]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -79,7 +116,18 @@ export default function InterviewPage() {
     }
   };
 
-  const fetchNextQuestion = async (jd: string, sk: string, chatHistory: Message[], currentPhase: InterviewPhase, count: number, videoBlob?: Blob) => {
+  const fetchNextQuestion = async (
+    jd: string,
+    sk: string,
+    chatHistory: Message[],
+    currentPhase: InterviewPhase,
+    count: number,
+    videoBlob?: Blob,
+    introLimit: number = numIntroQuestions,
+    techLimit: number = numTechQuestions,
+    prepLimit: number = maxPrepTime,
+    recordLimit: number = maxRecordTime
+  ) => {
     setStatus('processing');
     
     try {
@@ -93,6 +141,8 @@ export default function InterviewPage() {
         formData.append('history', JSON.stringify(chatHistory));
         formData.append('phase', currentPhase);
         formData.append('questionNumber', count.toString());
+        formData.append('numIntroQuestions', introLimit.toString());
+        formData.append('numTechQuestions', techLimit.toString());
         formData.append('video', videoBlob, `answer_${Date.now()}.webm`);
 
         res = await fetch('/api/interview/generate', {
@@ -109,7 +159,9 @@ export default function InterviewPage() {
             skills: sk,
             history: chatHistory,
             phase: currentPhase,
-            questionNumber: count
+            questionNumber: count,
+            numIntroQuestions: introLimit,
+            numTechQuestions: techLimit,
           }),
         });
       }
@@ -123,8 +175,8 @@ export default function InterviewPage() {
 
       setCurrentQuestion(data.nextQuestion);
       setHistory(prev => [...prev, { role: 'assistant', content: data.nextQuestion }]);
-      setPrepTimeLeft(30);
-      setRecordTimeLeft(300);
+      setPrepTimeLeft(prepLimit);
+      setRecordTimeLeft(recordLimit);
       setStatus('prep');
       
     } catch (err) {
@@ -188,12 +240,12 @@ export default function InterviewPage() {
       let nextCount = questionCount + 1;
       let nextPhase = phase;
       
-      if (nextCount > 5 && phase === 'intro') {
+      if (nextCount > numIntroQuestions && phase === 'intro') {
         nextPhase = 'technical';
         nextCount = 1; // Reset count for technical phase
       }
       
-      if (nextCount > 5 && phase === 'technical') {
+      if (nextCount > numTechQuestions && phase === 'technical') {
         setStatus('finished');
         return;
       }
@@ -207,6 +259,7 @@ export default function InterviewPage() {
     } catch (err) {
       console.error("Upload error", err);
       alert("Failed to upload video. Please check connection.");
+      setStatus('setup');
     }
   };
 
@@ -216,6 +269,14 @@ export default function InterviewPage() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
+
   if (status === 'finished') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -223,12 +284,6 @@ export default function InterviewPage() {
           <CheckCircle2 className="w-20 h-20 text-green-500 mx-auto mb-6" />
           <h1 className="text-3xl font-bold mb-4">Interview Complete!</h1>
           <p className="text-gray-600 mb-8">Thank you for your time. Your responses have been recorded and will be reviewed shortly.</p>
-          <button 
-            onClick={() => router.push('/')}
-            className="bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-700 font-medium"
-          >
-            Return Home
-          </button>
         </div>
       </div>
     );
@@ -240,7 +295,7 @@ export default function InterviewPage() {
       <div className="w-1/3 bg-gray-800 p-8 flex flex-col border-r border-gray-700">
         <div className="mb-8">
           <div className="inline-block px-3 py-1 rounded-full bg-blue-900/50 text-blue-300 text-sm font-medium mb-4 uppercase tracking-wider">
-            {phase} Phase • Question {questionCount}/5
+            {phase} Phase • Question {questionCount}/{phase === 'intro' ? numIntroQuestions : numTechQuestions}
           </div>
           <h2 className="text-2xl font-bold leading-relaxed text-gray-100">
             {status === 'setup' || status === 'processing' ? (
@@ -273,7 +328,7 @@ export default function InterviewPage() {
                 Recording in Progress
               </h3>
               <div className="text-4xl font-mono text-red-100">{formatTime(recordTimeLeft)}</div>
-              <p className="text-red-200/60 text-sm mt-2">Speak clearly. Max 5 minutes.</p>
+              <p className="text-red-200/60 text-sm mt-2">Speak clearly. Max {formatTime(maxRecordTime)}.</p>
             </div>
           )}
         </div>

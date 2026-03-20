@@ -1,0 +1,102 @@
+
+> my-app@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.0 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+✓ Ready in 535ms
+
+○ Compiling / ...
+ GET / 200 in 5.3s (next.js: 5.0s, application-code: 314ms)
+ GET / 200 in 75ms (next.js: 6ms, application-code: 69ms)
+⨯ Error: supabaseUrl is required.
+    at module evaluation (src/lib/supabase-server.ts:6:43)
+    at module evaluation (src/app/actions.ts:3:1)
+    at module evaluation (.next-internal/server/app/page/actions.js (server actions loader):1:1)
+    at module evaluation (.next/dev/server/chunks/ssr/_0_mocu-._.js:119:352)
+  4 | const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC...
+  5 |
+> 6 | export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey)
+    |                                           ^
+  7 |
+  8 | export async function createJob(
+  9 |   jobDescription: string,  {
+  digest: '3442405128'
+}
+ POST / 500 in 798ms (next.js: 4ms, application-code: 795ms)
+[browser] Failed to create job template: Error: supabaseUrl is required.
+    at module evaluation (src/lib/supabase-server.ts:6:43)
+    at module evaluation (src/app/actions.ts:3:1)
+    at module evaluation (.next-internal/server/app/page/actions.js (server actions loader):1:1)
+    at module evaluation (about://React/Server/file:///app/.next/dev/server/chunks/ssr/_0_mocu-._.js?5:119:352)
+  4 | const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC...
+  5 |
+> 6 | export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey)
+    |                                           ^
+  7 |
+  8 | export async function createJob(
+  9 |   jobDescription: string,  (src/app/page.tsx:36:15)
+✓ Compiled in 30ms
+ GET / 200 in 69ms (next.js: 8ms, application-code: 60ms)
+⨯ Error: {"message":"TypeError: fetch failed","details":"TypeError: fetch failed\n\nCaused by: Error: getaddrinfo ENOTFOUND mock.supabase.co (ENOTFOUND)\nError: getaddrinfo ENOTFOUND mock.supabase.co\n    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)\n    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)","hint":"","code":""}
+    at ignore-listed frames {
+  digest: '126644244@E394'
+}
+ POST / 500 in 605ms (next.js: 5ms, application-code: 601ms)
+  └─ ƒ createJobAction({}) in 41ms src/actions.ts
+[browser] Failed to create job template: Error: {message: ..., details: ..., hint: "", code: ...} (src/app/page.tsx:36:15)
+✓ Compiled in 34ms
+ GET / 200 in 69ms (next.js: 6ms, application-code: 63ms)
+ POST / 200 in 17ms (next.js: 4ms, application-code: 14ms)
+  └─ ƒ createJobAction({}) in 2ms src/actions.ts
+ GET /job/mock-job-1773977899812 200 in 1369ms (next.js: 1291ms, application-code: 77ms)
+ POST /job/mock-job-1773977899812 200 in 53ms (next.js: 23ms, application-code: 30ms)
+  └─ ƒ createInterviewSessionAction("mock-job-1773977899812", {}) in 0ms src/actions.ts
+⨯ Error: supabaseUrl is required.
+    at module evaluation (src/lib/supabase.ts:6:37)
+    at module evaluation (src/app/interview/[interviewId]/page.tsx:6:1)
+  4 | const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  5 |
+> 6 | export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    |                                     ^
+  7 | {
+  digest: '958869076'
+}
+ GET /interview/mock-interview-1773977901416 500 in 2.9s (next.js: 2.2s, application-code: 744ms)
+[browser] Uncaught Error: supabaseUrl is required.
+    at module evaluation (src/lib/supabase.ts:6:37)
+    at module evaluation (src/app/interview/[interviewId]/page.tsx:6:1)
+  4 | const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  5 |
+> 6 | export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    |                                     ^
+  7 |
+ GET / 200 in 69ms (next.js: 4ms, application-code: 64ms)
+ POST / 200 in 15ms (next.js: 3ms, application-code: 12ms)
+  └─ ƒ createJobAction({}) in 0ms src/actions.ts
+ GET /job/mock-job-1773977944878 200 in 57ms (next.js: 23ms, application-code: 34ms)
+ POST /job/mock-job-1773977944878 200 in 18ms (next.js: 5ms, application-code: 13ms)
+  └─ ƒ createInterviewSessionAction("mock-job-1773977944878", {}) in 0ms src/actions.ts
+ GET /interview/mock-interview-1773977945135 200 in 108ms (next.js: 28ms, application-code: 80ms)
+ POST /interview/mock-interview-1773977945135 200 in 17ms (next.js: 6ms, application-code: 11ms)
+  └─ ƒ getInterviewSessionAction("mock-interview-1773977945135") in 0ms src/actions.ts
+[browser] Error accessing media devices. NotFoundError: Requested device not found (src/app/interview/[interviewId]/page.tsx:103:15)
+✓ Compiled in 528ms
+✓ Compiled in 28ms
+✓ Compiled in 177ms
+✓ Compiled in 186ms
+ GET / 200 in 592ms (next.js: 298ms, application-code: 294ms)
+ POST / 200 in 54ms (next.js: 5ms, application-code: 50ms)
+  └─ ƒ createJobAction({}) in 3ms src/actions.ts
+ GET /job/mock-job-1773978166024 200 in 110ms (next.js: 60ms, application-code: 50ms)
+ POST /job/mock-job-1773978166024 200 in 30ms (next.js: 6ms, application-code: 24ms)
+  └─ ƒ getJobAction("mock-job-1773978166024") in 0ms src/actions.ts
+ POST /job/mock-job-1773978166024 200 in 25ms (next.js: 6ms, application-code: 20ms)
+  └─ ƒ getJobAction("mock-job-1773978166024") in 1ms src/actions.ts
+ POST /job/mock-job-1773978166024 200 in 26ms (next.js: 4ms, application-code: 22ms)
+  └─ ƒ createInterviewSessionAction("mock-job-1773978166024", {}) in 0ms src/actions.ts
+ GET /interview/mock-interview-1773978166551 200 in 218ms (next.js: 51ms, application-code: 168ms)
+ POST /interview/mock-interview-1773978166551 200 in 16ms (next.js: 5ms, application-code: 11ms)
+  └─ ƒ getInterviewSessionAction("mock-interview-1773978166551") in 0ms src/actions.ts
+[browser] Error accessing media devices. NotFoundError: Requested device not found (src/app/interview/[interviewId]/page.tsx:114:15)
