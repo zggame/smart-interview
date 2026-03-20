@@ -4,7 +4,8 @@ import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createLogger } from '@/lib/logger';
-import { uploadInterviewRecording } from '@/lib/supabase-server';
+import { downloadInterviewRecording } from '@/lib/supabase-server';
+import { buildAnswerHistoryEntry } from '@/app/interview/flow';
 
 // Initialize the Google Gen AI client
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -20,40 +21,23 @@ function isMessageHistory(value: unknown): value is { role: string; content: str
     );
 }
 
+function isInterviewFinished(phase: string, questionNumber: number) {
+  return phase === 'technical' && questionNumber > 5;
+}
+
 export async function POST(req: Request) {
   try {
     const contentType = req.headers.get('content-type') || '';
     log.info('Incoming request', { contentType });
-    
-    let jobDescription: string;
-    let skills: string;
-    let history: { role: string; content: string }[];
-    let phase: string;
-    let questionNumber: number;
-    let videoBlob: Blob | null = null;
 
-    // Parse either FormData (with video) or JSON (first question, no video)
-    if (contentType.includes('multipart/form-data')) {
-      const formData = await req.formData();
-      jobDescription = formData.get('jobDescription') as string;
-      skills = formData.get('skills') as string;
-      history = JSON.parse(formData.get('history') as string);
-      phase = formData.get('phase') as string;
-      questionNumber = parseInt(formData.get('questionNumber') as string, 10);
-      
-      const videoFile = formData.get('video');
-      if (videoFile instanceof Blob) {
-        videoBlob = videoFile;
-      }
-    } else {
-      log.debug('Parsing request as JSON (no video)');
-      const body = await req.json();
-      jobDescription = body.jobDescription;
-      skills = body.skills;
-      history = body.history;
-      phase = body.phase;
-      questionNumber = body.questionNumber;
-    }
+    log.debug('Parsing request as JSON');
+    const body = await req.json();
+    const jobDescription = body.jobDescription;
+    const skills = body.skills;
+    const history = body.history;
+    const phase = body.phase;
+    const questionNumber = body.questionNumber;
+    const storageKey = typeof body.storageKey === 'string' ? body.storageKey : null;
 
     if (
       typeof jobDescription !== 'string'
@@ -61,11 +45,17 @@ export async function POST(req: Request) {
       || !isMessageHistory(history)
       || (phase !== 'intro' && phase !== 'technical')
       || !Number.isInteger(questionNumber)
+      || (storageKey !== null && storageKey.length === 0)
     ) {
       return NextResponse.json({ error: 'Invalid request payload.' }, { status: 400 });
     }
 
-    log.info('Request parsed', { phase, questionNumber, historyLength: history.length, hasVideo: !!videoBlob });
+    log.info('Request parsed', { phase, questionNumber, historyLength: history.length, hasVideo: !!storageKey });
+
+    if (isInterviewFinished(phase, questionNumber)) {
+      log.info('Interview finished — technical phase complete');
+      return NextResponse.json({ finished: true });
+    }
 
     let nextQuestion: string;
 
@@ -89,26 +79,15 @@ export async function POST(req: Request) {
 
       nextQuestion = response.text?.trim() || 'Could you introduce yourself and tell us about a recent relevant project?';
 
-    } else if (videoBlob) {
-      // Subsequent questions WITH video — multimodal analysis
-      const mimeType = videoBlob.type || 'video/webm';
-      const { storageKey } = await uploadInterviewRecording({
-        blob: videoBlob,
-        mimeType,
-      });
-      const historyWithRecording = [
-        ...history,
-        { role: 'user', content: `[User answered via private video object: ${storageKey}]` },
-      ];
+    } else if (storageKey) {
+      // Subsequent questions WITH stored video — multimodal analysis
+      const downloadedRecording = await downloadInterviewRecording(storageKey);
+      const historyWithRecording = [...history, buildAnswerHistoryEntry(storageKey)];
 
-      if (phase === 'technical' && questionNumber > 5) {
-        log.info('Interview finished — technical phase complete');
-        return NextResponse.json({ finished: true });
-      }
-
-      // 1. Write the video blob to a temp file
-      const tempPath = join(tmpdir(), `interview_${Date.now()}.webm`);
-      const arrayBuffer = await videoBlob.arrayBuffer();
+      // 1. Write the stored video blob to a temp file
+      const extension = downloadedRecording.mimeType === 'video/mp4' ? 'mp4' : 'webm';
+      const tempPath = join(tmpdir(), `interview_${crypto.randomUUID()}.${extension}`);
+      const arrayBuffer = await downloadedRecording.blob.arrayBuffer();
       await writeFile(tempPath, Buffer.from(arrayBuffer));
 
       try {
@@ -116,7 +95,7 @@ export async function POST(req: Request) {
         log.info('Uploading video to Gemini File API...');
         const uploadedFile = await ai.files.upload({
           file: tempPath,
-          config: { mimeType: 'video/webm' },
+          config: { mimeType: downloadedRecording.mimeType },
         });
         log.info('Video uploaded to Gemini. Waiting for processing to complete...', { uri: uploadedFile.uri });
 

@@ -6,6 +6,21 @@ interface GenerateQuestionResponse {
   nextQuestion?: string;
 }
 
+interface UploadTargetResponse {
+  path?: string;
+  signedUrl?: string;
+  storageKey?: string;
+  token?: string;
+  error?: string;
+}
+
+export interface UploadTarget {
+  path: string;
+  signedUrl: string;
+  storageKey: string;
+  token: string;
+}
+
 export async function parseGenerateResponse(response: Response) {
   const data = (await response.json()) as GenerateQuestionResponse;
 
@@ -24,6 +39,37 @@ export async function parseGenerateResponse(response: Response) {
   return {
     finished: false as const,
     nextQuestion: data.nextQuestion.trim(),
+  };
+}
+
+export async function parseUploadTargetResponse(response: Response): Promise<UploadTarget> {
+  const data = (await response.json()) as UploadTargetResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to create upload URL.');
+  }
+
+  if (
+    typeof data.path !== 'string'
+    || typeof data.signedUrl !== 'string'
+    || typeof data.storageKey !== 'string'
+    || typeof data.token !== 'string'
+  ) {
+    throw new Error('Invalid upload target from server.');
+  }
+
+  return {
+    path: data.path,
+    signedUrl: data.signedUrl,
+    storageKey: data.storageKey,
+    token: data.token,
+  };
+}
+
+export function buildAnswerHistoryEntry(storageKey: string) {
+  return {
+    role: 'user' as const,
+    content: `[User answered via private video object: ${storageKey}]`,
   };
 }
 
