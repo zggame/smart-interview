@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { getNextInterviewStep, parseGenerateResponse } from './flow';
+import {
+  buildAnswerHistoryEntry,
+  getNextInterviewStep,
+  parseGenerateResponse,
+  parseUploadTargetResponse,
+} from './flow';
 
 describe('parseGenerateResponse', () => {
   it('throws the server error when the response is not ok', async () => {
@@ -22,6 +27,27 @@ describe('parseGenerateResponse', () => {
   });
 });
 
+describe('parseUploadTargetResponse', () => {
+  it('returns the signed upload target when the payload is valid', async () => {
+    const response = new Response(JSON.stringify({
+      path: '2026-03-19/answer-1.webm',
+      signedUrl: 'https://example.supabase.co/upload',
+      storageKey: '2026-03-19/answer-1.webm',
+      token: 'abc',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    await expect(parseUploadTargetResponse(response)).resolves.toEqual({
+      path: '2026-03-19/answer-1.webm',
+      signedUrl: 'https://example.supabase.co/upload',
+      storageKey: '2026-03-19/answer-1.webm',
+      token: 'abc',
+    });
+  });
+});
+
 describe('getNextInterviewStep', () => {
   it('moves from intro question 5 to technical question 1', () => {
     expect(getNextInterviewStep('intro', 5)).toEqual({
@@ -36,6 +62,15 @@ describe('getNextInterviewStep', () => {
       finished: true,
       nextCount: 6,
       nextPhase: 'technical',
+    });
+  });
+});
+
+describe('buildAnswerHistoryEntry', () => {
+  it('uses the private storage key consistently', () => {
+    expect(buildAnswerHistoryEntry('2026-03-19/answer-1.webm')).toEqual({
+      role: 'user',
+      content: '[User answered via private video object: 2026-03-19/answer-1.webm]',
     });
   });
 });

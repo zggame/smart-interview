@@ -6,11 +6,12 @@ Add these values to `.env.local` before running the app:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL="https://<project-ref>.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="<publishable-anon-key>"
 SUPABASE_SERVICE_ROLE_KEY="<service-role-key>"
 GEMINI_API_KEY="<google-ai-studio-key>"
 ```
 
-The `SUPABASE_SERVICE_ROLE_KEY` is only used on the server so interview recordings can be uploaded to a private `interviews` bucket.
+The `NEXT_PUBLIC_SUPABASE_ANON_KEY` is used by the browser for signed direct uploads, and the `SUPABASE_SERVICE_ROLE_KEY` is only used on the server to issue signed upload URLs and download private recordings for Gemini.
 
 ## Getting Started
 

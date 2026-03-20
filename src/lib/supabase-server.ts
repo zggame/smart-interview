@@ -18,25 +18,51 @@ const supabase = createClient(
   requireEnv('SUPABASE_SERVICE_ROLE_KEY', supabaseServiceRoleKey)
 );
 
-export async function uploadInterviewRecording({
-  blob,
-  mimeType,
-}: {
-  blob: Blob;
-  mimeType: string;
-}) {
-  const storageKey = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.webm`;
-  const arrayBuffer = await blob.arrayBuffer();
-  const { error } = await supabase.storage
-    .from('interviews')
-    .upload(storageKey, Buffer.from(arrayBuffer), {
-      contentType: mimeType,
-      upsert: false,
-    });
-
-  if (error) {
-    throw new Error(`Failed to upload interview recording: ${error.message}`);
+function getVideoExtension(mimeType: string) {
+  if (mimeType === 'video/mp4') {
+    return 'mp4';
   }
 
-  return { storageKey };
+  return 'webm';
+}
+
+function createInterviewStorageKey(mimeType: string) {
+  return `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${getVideoExtension(mimeType)}`;
+}
+
+export async function createInterviewUploadUrl({
+  mimeType,
+}: {
+  mimeType: string;
+}) {
+  const storageKey = createInterviewStorageKey(mimeType);
+  const { data, error } = await supabase.storage
+    .from('interviews')
+    .createSignedUploadUrl(storageKey);
+
+  if (error) {
+    throw new Error(`Failed to create interview upload URL: ${error.message}`);
+  }
+
+  return {
+    path: data.path,
+    signedUrl: data.signedUrl,
+    storageKey,
+    token: data.token,
+  };
+}
+
+export async function downloadInterviewRecording(storageKey: string) {
+  const { data, error } = await supabase.storage
+    .from('interviews')
+    .download(storageKey);
+
+  if (error) {
+    throw new Error(`Failed to download interview recording: ${error.message}`);
+  }
+
+  return {
+    blob: data,
+    mimeType: data.type || 'video/webm',
+  };
 }
