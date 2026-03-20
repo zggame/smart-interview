@@ -1,16 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-key'
+import { getSupabaseServerConfig } from '@/lib/supabase-config'
 
-export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey)
+const supabaseConfig = getSupabaseServerConfig()
+
+export const supabaseServer = createClient(
+  supabaseConfig.url,
+  supabaseConfig.serviceRoleKey
+)
 
 // Add mocked local fallback for tests
 const mockedJobs = new Map();
 const mockedInterviews = new Map();
 
 export async function getJob(jobId: string) {
-  if (supabaseUrl === 'https://mock.supabase.co') {
+  if (supabaseConfig.mode === 'mock') {
     const job = mockedJobs.get(jobId);
     if (!job) throw new Error("Not found");
     return {
@@ -44,7 +48,7 @@ export async function createJob(
   prepTimeLimit: number,
   recordTimeLimit: number
 ) {
-  if (supabaseUrl === 'https://mock.supabase.co') {
+  if (supabaseConfig.mode === 'mock') {
     const id = 'mock-job-' + Date.now();
     mockedJobs.set(id, {
       id, jobDescription, skills, numIntroQuestions, numTechQuestions, prepTimeLimit, recordTimeLimit
@@ -74,7 +78,7 @@ export async function createJob(
 }
 
 export async function createInterviewSession(jobId: string, candidateName: string) {
-  if (supabaseUrl === 'https://mock.supabase.co') {
+  if (supabaseConfig.mode === 'mock') {
     const id = 'mock-interview-' + Date.now();
     mockedInterviews.set(id, {
       id, jobId, candidateName, status: 'pending'
@@ -101,7 +105,7 @@ export async function createInterviewSession(jobId: string, candidateName: strin
 }
 
 export async function getInterviewSession(interviewId: string) {
-  if (supabaseUrl === 'https://mock.supabase.co') {
+  if (supabaseConfig.mode === 'mock') {
     const interview = mockedInterviews.get(interviewId);
     if (!interview) throw new Error("Not found");
     const job = mockedJobs.get(interview.jobId);
@@ -127,6 +131,28 @@ export async function getInterviewSession(interviewId: string) {
     `)
     .eq('id', interviewId)
     .single()
+
+  if (error) {
+    throw error
+  }
+  return data
+}
+
+export async function listInterviewSessions(jobId: string) {
+  if (supabaseConfig.mode === 'mock') {
+    return Array.from(mockedInterviews.values())
+      .filter((interview) => interview.jobId === jobId)
+      .map((interview) => ({
+        id: interview.id,
+        candidate_name: interview.candidateName,
+      }))
+  }
+
+  const { data, error } = await supabaseServer
+    .from('interviews')
+    .select('id, candidate_name')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false })
 
   if (error) {
     throw error

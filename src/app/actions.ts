@@ -1,6 +1,12 @@
 'use server'
 
-import { createJob, createInterviewSession, getInterviewSession, getJob } from '@/lib/supabase-server'
+import {
+  createInterviewSession,
+  createJob,
+  getInterviewSession,
+  getJob,
+  listInterviewSessions,
+} from '@/lib/supabase-server'
 
 export async function createJobAction(formData: FormData) {
   const jobDescription = formData.get('jobDescription') as string
@@ -38,4 +44,9 @@ export async function getInterviewSessionAction(interviewId: string) {
 export async function getJobAction(jobId: string) {
   const job = await getJob(jobId)
   return job
+}
+
+export async function listInterviewSessionsAction(jobId: string) {
+  const sessions = await listInterviewSessions(jobId)
+  return sessions
 }

@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { Camera, Mic, Loader2, Play, Circle, Square, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getInterviewSessionAction } from '@/app/actions';
+import { createUploadRecoveryState } from '@/app/interview/interview-flow';
 
 type InterviewPhase = 'intro' | 'technical';
 
@@ -219,7 +220,7 @@ export default function InterviewPage() {
     try {
       // 1. Upload to Supabase Storage
       const fileName = `interview_${Date.now()}.webm`;
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('interviews')
         .upload(fileName, blob, {
           contentType: 'video/webm'
@@ -259,7 +260,13 @@ export default function InterviewPage() {
     } catch (err) {
       console.error("Upload error", err);
       alert("Failed to upload video. Please check connection.");
-      setStatus('setup');
+      const recoveryState = createUploadRecoveryState({
+        prepTimeLimit: maxPrepTime,
+        recordTimeLimit: maxRecordTime,
+      });
+      setPrepTimeLeft(recoveryState.prepTimeLeft);
+      setRecordTimeLeft(recoveryState.recordTimeLeft);
+      setStatus(recoveryState.status);
     }
   };
 

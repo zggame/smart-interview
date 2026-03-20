@@ -3,23 +3,40 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Users, Link as LinkIcon, Briefcase, FileText, Settings, Clock } from 'lucide-react';
-import { createInterviewSessionAction, getJobAction } from '@/app/actions';
+import {
+  createInterviewSessionAction,
+  getJobAction,
+  listInterviewSessionsAction,
+} from '@/app/actions';
+import { mapInterviewSessionsToLinks, type InterviewLink } from '@/app/job/interview-links';
+
+interface JobConfig {
+  num_intro_questions: number;
+  num_tech_questions: number;
+  prep_time_limit: number;
+  record_time_limit: number;
+  skills: string | null;
+}
 
 export default function JobDashboard() {
   const params = useParams();
   const id = params.id as string;
   const [candidateName, setCandidateName] = useState('');
-  const [interviewLinks, setInterviewLinks] = useState<{name: string, url: string}[]>([]);
+  const [interviewLinks, setInterviewLinks] = useState<InterviewLink[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isClient, setIsClient] = useState(false);
-  const [jobConfig, setJobConfig] = useState<any>(null);
+  const [jobConfig, setJobConfig] = useState<JobConfig | null>(null);
 
   useEffect(() => {
     setIsClient(true);
     async function loadJob() {
       try {
-        const job = await getJobAction(id);
+        const [job, sessions] = await Promise.all([
+          getJobAction(id),
+          listInterviewSessionsAction(id),
+        ]);
         setJobConfig(job);
+        setInterviewLinks(mapInterviewSessionsToLinks(sessions, window.location.origin));
       } catch (err) {
         console.error("Failed to load job configuration", err);
       }
@@ -39,7 +56,7 @@ export default function JobDashboard() {
       const interviewId = await createInterviewSessionAction(id, formData);
       const url = `${window.location.origin}/interview/${interviewId}`;
 
-      setInterviewLinks(prev => [...prev, { name: candidateName, url }]);
+      setInterviewLinks(prev => [{ name: candidateName, url }, ...prev]);
       setCandidateName('');
     } catch (error) {
       console.error('Failed to generate interview link:', error);
