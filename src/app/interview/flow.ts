@@ -73,10 +73,15 @@ export function buildAnswerHistoryEntry(storageKey: string) {
   };
 }
 
-export function getNextInterviewStep(phase: InterviewPhase, questionCount: number) {
+export function getNextInterviewStep(
+  phase: InterviewPhase,
+  questionCount: number,
+  numIntroQuestions: number = 5,
+  numTechQuestions: number = 5
+) {
   const nextCount = questionCount + 1;
 
-  if (phase === 'intro' && nextCount > 5) {
+  if (phase === 'intro' && nextCount > numIntroQuestions) {
     return {
       finished: false as const,
       nextCount: 1,
@@ -84,7 +89,7 @@ export function getNextInterviewStep(phase: InterviewPhase, questionCount: numbe
     };
   }
 
-  if (phase === 'technical' && nextCount > 5) {
+  if (phase === 'technical' && nextCount > numTechQuestions) {
     return {
       finished: true as const,
       nextCount,
@@ -96,5 +101,16 @@ export function getNextInterviewStep(phase: InterviewPhase, questionCount: numbe
     finished: false as const,
     nextCount,
     nextPhase: phase,
+  };
+}
+
+export function createUploadRecoveryState(input: {
+  prepTimeLimit: number;
+  recordTimeLimit: number;
+}) {
+  return {
+    status: 'prep' as const,
+    prepTimeLeft: input.prepTimeLimit,
+    recordTimeLeft: input.recordTimeLimit,
   };
 }

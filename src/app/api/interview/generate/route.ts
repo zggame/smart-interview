@@ -21,8 +21,8 @@ function isMessageHistory(value: unknown): value is { role: string; content: str
     );
 }
 
-function isInterviewFinished(phase: string, questionNumber: number) {
-  return phase === 'technical' && questionNumber > 5;
+function isInterviewFinished(phase: string, questionNumber: number, numTechQuestions: number) {
+  return phase === 'technical' && questionNumber > numTechQuestions;
 }
 
 export async function POST(req: Request) {
@@ -37,6 +37,8 @@ export async function POST(req: Request) {
     const history = body.history;
     const phase = body.phase;
     const questionNumber = body.questionNumber;
+    const numIntroQuestions = body.numIntroQuestions || 5;
+    const numTechQuestions = body.numTechQuestions || 5;
     const storageKey = typeof body.storageKey === 'string' ? body.storageKey : null;
 
     if (
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
 
     log.info('Request parsed', { phase, questionNumber, historyLength: history.length, hasVideo: !!storageKey });
 
-    if (isInterviewFinished(phase, questionNumber)) {
+    if (isInterviewFinished(phase, questionNumber, numTechQuestions)) {
       log.info('Interview finished — technical phase complete');
       return NextResponse.json({ finished: true });
     }
@@ -127,7 +129,7 @@ export async function POST(req: Request) {
           Target Skills for Technical Phase:
           ${skills || 'General technical proficiency related to the job description'}
 
-          Current Phase: ${phase} Phase (Question ${questionNumber} of 5)
+          Current Phase: ${phase} Phase (Question ${questionNumber} of ${phase === 'intro' ? numIntroQuestions : numTechQuestions})
 
           Previous interview questions and answers in this session:
           ${JSON.stringify(historyWithRecording)}
@@ -174,7 +176,7 @@ export async function POST(req: Request) {
         Target Skills for Technical Phase:
         ${skills || 'General technical proficiency related to the job description'}
 
-        Current Phase: ${phase} Phase (Question ${questionNumber} of 5)
+        Current Phase: ${phase} Phase (Question ${questionNumber} of ${phase === 'intro' ? numIntroQuestions : numTechQuestions})
         
         Interview History context:
         ${JSON.stringify(history)}
