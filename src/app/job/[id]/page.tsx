@@ -193,7 +193,7 @@ export default function JobDashboard() {
                     {link.status !== 'completed' && (
                        <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline flex items-center gap-1">
                          <LinkIcon className="w-3 h-3" />
-                         {link.url.substring(0, 60)}...
+                         View Landing Page
                        </a>
                     )}
                     {link.expiresAt && (
@@ -204,14 +204,7 @@ export default function JobDashboard() {
                   </div>
 
                   <div className="flex flex-col gap-2 items-end">
-                    {link.status !== 'completed' && (
-                      <button
-                        onClick={() => navigator.clipboard.writeText(link.url)}
-                        className="text-gray-600 hover:text-gray-900 bg-white border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto"
-                      >
-                        Copy Link
-                      </button>
-                    )}
+
                     <button
                       onClick={() => router.push(`/job/${id}/interviews/${link.id}`)}
                       className="text-white bg-blue-600 hover:bg-blue-700 border border-transparent px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto flex items-center justify-center gap-2"

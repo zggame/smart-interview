@@ -27,7 +27,7 @@ SUMMARY: [your summary here]
 export function parseInterviewReview(rawText: string) {
   const lines = rawText.split('\n');
   let recommendation = 'maybe';
-  let summaryParts: string[] = [];
+  const summaryParts: string[] = [];
 
   for (const line of lines) {
     if (line.toUpperCase().startsWith('RECOMMENDATION:')) {
