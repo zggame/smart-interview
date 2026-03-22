@@ -88,7 +88,7 @@ export async function getJob(jobId: string) {
   return data;
 }
 
-export async function createJob(
+export async function createJob(recruiterUserId: string,
   jobDescription: string,
   skills: string,
   numIntroQuestions: number,
@@ -108,6 +108,7 @@ export async function createJob(
     .from('jobs')
     .insert([
       {
+        recruiter_user_id: recruiterUserId,
         job_description: jobDescription,
         skills,
         num_intro_questions: numIntroQuestions,
@@ -206,4 +207,148 @@ export async function listInterviewSessions(jobId: string) {
     throw error;
   }
   return data;
+}
+
+export async function createInterviewInvite(
+  jobId: string,
+  candidateEmail: string,
+  candidateName: string,
+  tokenHash: string,
+  expiryDate: Date
+) {
+  const { data, error } = await supabaseServer
+    .from('interviews')
+    .insert([
+      {
+        job_id: jobId,
+        candidate_email: candidateEmail,
+        candidate_name: candidateName,
+        invite_token_hash: tokenHash,
+        invite_expires_at: expiryDate.toISOString(),
+        status: 'not_started',
+      }
+    ])
+    .select('id')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+  return data.id;
+}
+
+export async function listJobInterviewsForRecruiter(jobId: string) {
+  const { data, error } = await supabaseServer
+    .from('interviews')
+    .select('*')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function getRecruiterInterviewReview(interviewId: string) {
+  const { data, error } = await supabaseServer
+    .from('interviews')
+    .select(`
+      *,
+      job:jobs (*),
+      turns:interview_turns (*)
+    `)
+    .eq('id', interviewId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function getCandidateInterviewByInviteToken(interviewId: string, tokenHash: string) {
+  const { data, error } = await supabaseServer
+    .from('interviews')
+    .select(`
+      *,
+      job:jobs (*)
+    `)
+    .eq('id', interviewId)
+    .eq('invite_token_hash', tokenHash)
+    .single();
+
+  if (error) {
+    throw new Error('Invalid or expired invite');
+  }
+  return data;
+}
+
+export async function markInterviewIdentityConfirmed(interviewId: string) {
+  const { error } = await supabaseServer
+    .from('interviews')
+    .update({ identity_confirmed_at: new Date().toISOString() })
+    .eq('id', interviewId);
+  if (error) throw error;
+}
+
+export async function markInterviewConsented(interviewId: string) {
+  const { error } = await supabaseServer
+    .from('interviews')
+    .update({ consented_at: new Date().toISOString() })
+    .eq('id', interviewId);
+  if (error) throw error;
+}
+
+export async function markInterviewStarted(interviewId: string) {
+  const { error } = await supabaseServer
+    .from('interviews')
+    .update({
+      started_at: new Date().toISOString(),
+      status: 'in_progress'
+    })
+    .eq('id', interviewId);
+  if (error) throw error;
+}
+
+export async function appendInterviewTurn(interviewId: string, phase: string, questionNumber: number, questionText: string) {
+  const { data, error } = await supabaseServer
+    .from('interview_turns')
+    .insert([
+      {
+        interview_id: interviewId,
+        phase,
+        question_number: questionNumber,
+        question_text: questionText,
+      }
+    ])
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function attachAnswerToTurn(turnId: string, storageKey: string, mimeType: string) {
+  const { error } = await supabaseServer
+    .from('interview_turns')
+    .update({
+      answer_storage_key: storageKey,
+      answer_mime_type: mimeType,
+      answered_at: new Date().toISOString()
+    })
+    .eq('id', turnId);
+  if (error) throw error;
+}
+
+export async function completeInterviewWithReview(interviewId: string, aiSummary: string, aiRecommendation: string) {
+  const { error } = await supabaseServer
+    .from('interviews')
+    .update({
+      ai_summary: aiSummary,
+      ai_recommendation: aiRecommendation,
+      completed_at: new Date().toISOString(),
+      status: 'completed'
+    })
+    .eq('id', interviewId);
+  if (error) throw error;
 }

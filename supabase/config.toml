@@ -1,0 +1,4 @@
+[storage.buckets.interviews]
+public = false
+file_size_limit = "50MiB"
+allowed_mime_types = ["video/webm", "video/mp4", "audio/webm", "audio/mp4"]

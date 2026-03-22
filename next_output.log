@@ -1,0 +1,36 @@
+
+> my-app@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.0 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+✓ Ready in 544ms
+
+ GET / 307 in 625ms (next.js: 321ms, application-code: 304ms)
+ GET /login 200 in 1391ms (next.js: 1215ms, application-code: 175ms)
+ GET / 307 in 151ms (next.js: 5ms, application-code: 146ms)
+ GET /login 200 in 70ms (next.js: 3ms, application-code: 67ms)
+[browser] TypeError: Failed to fetch
+    at handleLogin (src/app/login/login-form.tsx:24:56)
+  22 |     );
+  23 |
+> 24 |     const { error: signInError } = await supabase.auth.signInWithPassword({
+     |                                                        ^
+  25 |       email,
+  26 |       password,
+  27 |     }); (src/app/login/login-form.tsx:24:36)
+ GET / 307 in 149ms (next.js: 4ms, application-code: 145ms)
+ GET /login 200 in 69ms (next.js: 3ms, application-code: 66ms)
+ GET /interview/mock-interview-123 200 in 1656ms (next.js: 1512ms, application-code: 144ms)
+⨯ Error: {"message":"TypeError: fetch failed","details":"TypeError: fetch failed\n\nCaused by: Error: getaddrinfo ENOTFOUND mock.supabase.co (ENOTFOUND)\nError: getaddrinfo ENOTFOUND mock.supabase.co\n    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)\n    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)","hint":"","code":""}
+    at ignore-listed frames {
+  digest: '126644244@E394'
+}
+ POST /interview/mock-interview-123 500 in 713ms (next.js: 25ms, application-code: 688ms)
+  └─ ƒ getInterviewSessionAction("mock-interview-123") in 31ms src/actions.ts
+ GET / 200 in 68ms (next.js: 6ms, application-code: 62ms)
+[browser] Failed to load interview session: Error: {message: ..., details: ..., hint: "", code: ...} (src/app/interview/[interviewId]/page.tsx:254:17)
+ GET /login 200 in 111ms (next.js: 7ms, application-code: 104ms)
+ GET /login 200 in 73ms (next.js: 5ms, application-code: 68ms)
+ GET /login 200 in 77ms (next.js: 8ms, application-code: 69ms)

@@ -13,11 +13,23 @@ describe('interview-links', () => {
       )
     ).toEqual([
       {
+        id: 'interview-1',
         name: 'Alice Smith',
+        email: undefined,
+        status: undefined,
+        expiresAt: undefined,
+        recommendation: undefined,
+        summary: undefined,
         url: 'https://smartinterview.example/interview/interview-1',
       },
       {
+        id: 'interview-2',
         name: 'Bob Jones',
+        email: undefined,
+        status: undefined,
+        expiresAt: undefined,
+        recommendation: undefined,
+        summary: undefined,
         url: 'https://smartinterview.example/interview/interview-2',
       },
     ]);

@@ -1,9 +1,11 @@
-export type InterviewPhase = 'intro' | 'technical';
+export type InterviewPhase = 'intro' | 'technical' | 'closing';
 
 interface GenerateQuestionResponse {
   error?: string;
   finished?: boolean;
   nextQuestion?: string;
+  turnId?: string;
+  summary?: string;
 }
 
 interface UploadTargetResponse {
@@ -29,7 +31,12 @@ export async function parseGenerateResponse(response: Response) {
   }
 
   if (data.finished) {
-    return { finished: true as const };
+    return {
+      finished: true as const,
+      nextQuestion: data.nextQuestion,
+      turnId: data.turnId,
+      summary: data.summary,
+    };
   }
 
   if (typeof data.nextQuestion !== 'string' || data.nextQuestion.trim().length === 0) {
@@ -39,6 +46,7 @@ export async function parseGenerateResponse(response: Response) {
   return {
     finished: false as const,
     nextQuestion: data.nextQuestion.trim(),
+    turnId: data.turnId,
   };
 }
 
@@ -90,6 +98,14 @@ export function getNextInterviewStep(
   }
 
   if (phase === 'technical' && nextCount > numTechQuestions) {
+    return {
+      finished: false as const,
+      nextCount: 1,
+      nextPhase: 'closing' as const,
+    };
+  }
+
+  if (phase === 'closing' && nextCount > 1) {
     return {
       finished: true as const,
       nextCount,
